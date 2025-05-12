@@ -1,14 +1,55 @@
 services:
-    
-    watchdog-service:
-      build: .
-      ports:
-        - "8003:8003"
-      env_file:
-        - ./.env
-      environment:
-        - PYTHONUNBUFFERED=1
-      restart: always
-      volumes:
-        - ./app:/app/app
-        - ./requirements.txt:/app/requirements.txt
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=lifdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - lif-network
+    restart: always
+
+  news-service:
+    build: ./news-servise
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./news-servise/app:/app/app
+      - ./news-servise/requirements.txt:/app/requirements.txt
+    env_file:
+      - ./news-servise/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/lifdb
+    restart: always
+    depends_on:
+      - postgres
+    networks:
+      - lif-network
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./gateway:/app
+    env_file:
+      - ./gateway/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: always
+    depends_on:
+      - news-service
+    networks:
+      - lif-network
+
+volumes:
+  postgres_data:
+
+networks:
+  lif-network:
+    driver: bridge
