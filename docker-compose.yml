@@ -1,0 +1,14 @@
+services:
+    
+    watchdog-service:
+      build: .
+      ports:
+        - "8003:8003"
+      env_file:
+        - ./.env
+      environment:
+        - PYTHONUNBUFFERED=1
+      restart: always
+      volumes:
+        - ./app:/app/app
+        - ./requirements.txt:/app/requirements.txt
