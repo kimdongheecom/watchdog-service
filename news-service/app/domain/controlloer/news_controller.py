@@ -6,5 +6,5 @@ class NewsController:
     def __init__(self):
         self.news_service = NewsService()
 
-    def preprocess(self):
-        return self.news_service.preprocess()
+    def get_news(self):
+        return self.news_service.get_news()

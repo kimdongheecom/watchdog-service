@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:15
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -14,14 +14,14 @@ services:
     restart: always
 
   news-service:
-    build: ./news-servise
+    build: ./news-service
     ports:
       - "8003:8003"
     volumes:
-      - ./news-servise/app:/app/app
-      - ./news-servise/requirements.txt:/app/requirements.txt
+      - ./news-service/app:/app/app
+      - ./news-service/requirements.txt:/app/requirements.txt
     env_file:
-      - ./news-servise/.env
+      - ./news-service/.env
     environment:
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/lifdb

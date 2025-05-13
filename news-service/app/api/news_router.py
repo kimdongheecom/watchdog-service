@@ -7,8 +7,11 @@ router = APIRouter()
 logger = logging.getLogger("news_main")
 news_controller = NewsController()
 
-@router.post("/", response_model=None)
+@router.post("/search", response_model=None)
 async def news(request: Request):
-    result = news_controller.preprocess()
+    data = await request.json()
+    company_name = data.get("company_name")
+    logger.info(f"Received company_name: {company_name}")
+    result = news_controller.get_news()
     return JSONResponse(content=result)
     

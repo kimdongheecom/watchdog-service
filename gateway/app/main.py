@@ -48,7 +48,7 @@ app.add_middleware(
 )
 
 # ✅ 메인 라우터 생성
-gateway_router = APIRouter(prefix="/ai/v1", tags=["Gateway API"])
+gateway_router = APIRouter(prefix="/e/v2", tags=["Gateway API"])
 
 # ✅ 헬스 체크 엔드포인트 추가
 @gateway_router.get("/health", summary="테스트 엔드포인트")
@@ -86,13 +86,25 @@ async def proxy_get(
 async def proxy_post(
     service: ServiceType,
     path: str,
+    request: Request,
     file: Optional[UploadFile] = File(None),
     json_data: Optional[str] = Form(None)
 ):
     logger.info(f"🌈Received request for service: {service}, path: {path}")
     factory = ServiceProxyFactory(service_type=service)
 
-    if file:
+    # Content-Type 확인
+    content_type = request.headers.get('content-type', '')
+    
+    if 'application/json' in content_type:
+        # JSON 요청 처리
+        body = await request.json()
+        response = await factory.request(
+            method="POST",
+            path=path,
+            json=body
+        )
+    elif file:
         # 파일 업로드 처리
         files = {'file': (file.filename, file.file, file.content_type)}
         response = await factory.request(
@@ -101,7 +113,7 @@ async def proxy_post(
             files=files
         )
     elif json_data:
-        # JSON 문자열 파싱
+        # JSON 문자열 파싱 (multipart/form-data에서 전송된 경우)
         try:
             data = json.loads(json_data)
         except Exception:
@@ -112,7 +124,7 @@ async def proxy_post(
             json=data
         )
     else:
-        return JSONResponse(content={"error": "file 또는 json_data 중 하나는 입력해야 합니다."}, status_code=400)
+        return JSONResponse(content={"error": "파일, JSON 데이터 또는 application/json 요청 중 하나가 필요합니다."}, status_code=400)
 
     if response.status_code == 200:
         try:
