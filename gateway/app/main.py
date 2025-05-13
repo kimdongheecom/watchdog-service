@@ -65,6 +65,7 @@ async def proxy_get(
     request: Request
 ):
     factory = ServiceProxyFactory(service_type=service)
+    logger.info(f"🎃✨🎉🎊 Service URL: {factory.base_url}")
     response = await factory.request(
         method="GET",
         path=path,
@@ -93,39 +94,51 @@ async def proxy_post(
     logger.info(f"🌈Received request for service: {service}, path: {path}")
     factory = ServiceProxyFactory(service_type=service)
 
-    # Content-Type 확인
     content_type = request.headers.get('content-type', '')
-    
-    if 'application/json' in content_type:
-        # JSON 요청 처리
-        body = await request.json()
-        response = await factory.request(
-            method="POST",
-            path=path,
-            json=body
-        )
-    elif file:
-        # 파일 업로드 처리
-        files = {'file': (file.filename, file.file, file.content_type)}
-        response = await factory.request(
-            method="POST",
-            path=path,
-            files=files
-        )
-    elif json_data:
-        # JSON 문자열 파싱 (multipart/form-data에서 전송된 경우)
-        try:
-            data = json.loads(json_data)
-        except Exception:
-            return JSONResponse(content={"error": "Invalid JSON string"}, status_code=400)
-        response = await factory.request(
-            method="POST",
-            path=path,
-            json=data
-        )
-    else:
-        return JSONResponse(content={"error": "파일, JSON 데이터 또는 application/json 요청 중 하나가 필요합니다."}, status_code=400)
 
+    # ✅ 기본 헤더 설정
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    if 'application/json' in content_type:
+        body_dict = await request.json()
+        body_bytes = json.dumps(body_dict).encode("utf-8")
+        response = await factory.request(
+            method="POST",
+            path=path,
+            headers=headers,
+            body=body_bytes
+        )
+
+    elif file:
+        return JSONResponse(
+            content={"error": "파일 업로드는 현재 지원되지 않습니다."},
+            status_code=501
+        )
+
+    elif json_data:
+        try:
+            data_dict = json.loads(json_data)
+            body_bytes = json.dumps(data_dict).encode("utf-8")
+        except Exception as e:
+            return JSONResponse(content={"error": f"Invalid JSON string: {str(e)}"}, status_code=400)
+
+        response = await factory.request(
+            method="POST",
+            path=path,
+            headers=headers,
+            body=body_bytes
+        )
+
+    else:
+        return JSONResponse(
+            content={"error": "파일, JSON 데이터 또는 application/json 요청 중 하나가 필요합니다."},
+            status_code=400
+        )
+
+    # 응답 처리
     if response.status_code == 200:
         try:
             return JSONResponse(
@@ -143,6 +156,7 @@ async def proxy_post(
             content={"detail": f"Service error: {response.text}"},
             status_code=response.status_code
         )
+
 
 # PUT
 @gateway_router.put("/{service}/{path:path}", summary="PUT 프록시")

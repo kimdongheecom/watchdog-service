@@ -47,9 +47,17 @@ docker compose -p news-service down
 docker compose -p news-service build --no-cache
 docker compose -p news-service up -d
 
+# 특정 서비스 재시작
+docker compose -p gateway down 
+docker compose -p gateway build --no-cache
+docker compose -p gateway up -d
+
 # 전체 서비스 완전 재시작
 docker-compose down  
 docker rmi $(docker images 'esg-watchdog*' -q)  
 docker system prune -a 
 docker-compose build --no-cache  
 docker-compose up
+
+# 기존 컨테이너 확인
+docker ps | grep postgres
