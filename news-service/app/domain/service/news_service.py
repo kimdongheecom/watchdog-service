@@ -71,10 +71,18 @@ class NewsService:
         
         logger.info(f"🎃✨🎉🎊 News List: {news_list}")
 
+        # 링크만 추출해서 리스트로 정리
+        links = [news['link'] for news in news_list if news.get('link')]
+        print("🔗 추출된 링크 목록:")
+        for link in links:
+            print(link)
+
         return {
             "company": company_name,
             "news": news_list
         }
+
+
 
     def get_news_content(self, url: str) -> str:
         """각 뉴스 링크에서 본문 크롤링"""
