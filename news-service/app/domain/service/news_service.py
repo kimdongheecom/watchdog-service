@@ -1,4 +1,5 @@
 from collections import Counter
+import re
 import requests
 from bs4 import BeautifulSoup
 import logging
@@ -8,12 +9,13 @@ matplotlib.use('Agg') # GUI 백엔드 비활성화
 import matplotlib.pyplot as plt # pyplot 임포트 (폰트 경로 지정 등에 사용될 수 있음)
 import io # 바이트 스트림 처리를 위해 임포트
 import base64 # 이미지를 base64로 인코딩하기 위해 임포트
-
+from konlpy.tag import Okt
 # 🔧 [Selenium 관련 추가 import]
 import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service as ChromeService
+import os
 
 logger = logging.getLogger("news_service")
 
@@ -21,10 +23,26 @@ logger = logging.getLogger("news_service")
 # Dockerfile에서 fonts-nanum을 설치했다면 일반적으로 아래 경로 중 하나에서 찾을 수 있습니다.
 # 실제 경로는 Docker 이미지 내부에서 `fc-list :lang=ko` 명령 등으로 확인 가능합니다.
 FONT_PATH = 'app/static/fonts/NanumGothic.ttf' # 폰트 경로를 프로젝트 내부 경로로 변경
+OUTPUT_DIR = 'app/static/output'
 
 class NewsService:
     def __init__(self):
-        pass
+        # Okt 객체는 초기화에 시간이 걸릴 수 있으므로, 클래스 생성 시 한 번만 생성
+        try:
+            self.okt = Okt()
+            logger.info("✅ Okt 형태소 분석기 초기화 성공")
+        except Exception as e:
+            logger.error(f"❌ Okt 형태소 분석기 초기화 실패: {e}. NLP 기능이 제한될 수 있습니다.")
+            self.okt = None
+        # pass # 기존 __init__ 내용 유지 (Okt 초기화 외에는 비워둠)
+
+        # 애플리케이션 시작 시 output 디렉터리 생성 시도
+        try:
+            if not os.path.exists(OUTPUT_DIR):
+                os.makedirs(OUTPUT_DIR)
+                logger.info(f"✅ 출력 디렉터리 '{OUTPUT_DIR}'가 생성되었습니다.")
+        except OSError as e:
+            logger.error(f"❌ 출력 디렉터리 '{OUTPUT_DIR}' 생성 실패: {e}")
 
     def get_news(self, company_name: str):
         base_url = "https://search.naver.com/search.naver"
@@ -47,7 +65,7 @@ class NewsService:
             return {"error": f"네이버 뉴스 요청 실패: {str(e)}"}
 
         soup = BeautifulSoup(response.text, "html.parser")
-        logger.info(f"🎃✨🎉🎊 Soup: {soup}")
+        #logger.info(f"🎃✨🎉🎊 Soup: {soup}")
         
         # 제목 요소 찾기
         items = soup.select("span[class='sds-comps-text sds-comps-text-ellipsis-1 sds-comps-text-type-headline1']")
@@ -85,7 +103,10 @@ class NewsService:
         
         link1 = links[0]
         content = self.crawl_with_selenium(link1)
-        print("🔗 추출된 컨텐츠 내용:",content)
+        word_freq = self.process_text_for_nlp(content)
+        wordcloud_image = self.generate_wordcloud_image_from_freq(word_freq)
+
+        # print("🔗 추출된 컨텐츠 내용:",content)
 
   
     
@@ -183,119 +204,109 @@ class NewsService:
             if driver:
                 driver.quit()
                 logger.info(f"🧹 Selenium WebDriver 종료됨 (URL: {link})")
+     # --- 여기에 새로운 NLP 및 워드클라우드 함수 추가 ---
+    
+    def process_text_for_nlp(self, text: str, custom_stopwords: list = None) -> Counter:
+        """
+        주어진 텍스트에 대해 NLP 전처리 (형태소 분석, 명사 추출, 불용어 제거 등)를 수행하고
+        단어 빈도수를 Counter 객체로 반환합니다.
+        custom_stopwords: 추가적인 불용어 리스트를 받을 수 있습니다.
+        """
+        if not self.okt:
+            logger.error("Okt 형태소 분석기가 초기화되지 않아 NLP 처리를 건너뜁니다.")
+            return Counter()
 
-    # ... [get_news_content (정적), analyze_esg_keywords, generate_wordcloud_image 같은 다른 메소드들]
-    # ... 워드클라우드 다시 활성화 시 FONT_PATH가 정확한지 확인
+        if not text or text.startswith("["): # 오류 메시지나 빈 텍스트 처리
+            logger.warning(f"NLP 처리할 유효한 텍스트가 없습니다: '{text[:50]}...'")
+            return Counter()
 
+        # 1. 텍스트 정제: 한글, 영문, 숫자, 공백을 제외한 특수문자 제거
+        processed_text = re.sub(r'[^가-힣A-Za-z0-9\s]', '', text)
+        # logger.debug(f"특수문자 제거 후 텍스트 (일부): {processed_text[:100]}")
 
+        # 2. 명사 추출
+        try:
+            nouns = self.okt.nouns(processed_text)
+            logger.info(f"🎃✨🎉🎊 추출된 명사 (처음 20개): {nouns[:20]}")
+            # logger.debug(f"추출된 명사 (처음 20개): {nouns[:20]}")
+        except Exception as e:
+            logger.error(f"Okt 명사 추출 중 오류 발생: {e}")
+            return Counter()
 
-    # def get_news_content(self, url: str) -> str:
-    #     """각 뉴스 링크에서 본문 크롤링"""
-    #     try:
-    #         response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-    #         response.raise_for_status()
-    #         soup = BeautifulSoup(response.content.decode('utf-8', 'replace'), "html.parser") # utf-8 디코딩 명시
-
-    #         # 네이버 뉴스 본문 선택자 (다양한 구조에 대응)
-    #         # 우선순위: #articleBodyContents (구버전), #dic_area (일반), article (HTML5 시맨틱 태그)
-    #         content_selectors = [
-    #             '#articleBodyContents',
-    #             '#dic_area',
-    #             'article#dic_area', # 좀 더 명확한 선택
-    #             'div.article_body', # 다른 언론사 포맷
-    #             'div.newsct_body', # 다른 언론사 포맷
-    #             'article'
-    #         ]
-    #         article = None
-    #         for selector in content_selectors:
-    #             article = soup.select_one(selector)
-    #             if article:
-    #                 break
-            
-    #         content = ""
-    #         if article:
-    #             # 불필요한 태그 제거 (광고, 관련뉴스 등)
-    #             tags_to_remove = ['script', 'style', 'iframe', 'footer', 'header', 'aside', '.link_news', '.promotion', '.journalist_info']
-    #             for tag_selector in tags_to_remove:
-    #                 for unwanted_tag in article.select(tag_selector):
-    #                     unwanted_tag.decompose()
-    #             content = article.get_text(separator="\n", strip=True)
-    #         else:
-    #             content = "본문 추출 실패 (선택자 불일치)"
-            
-    #         # logger.info(f"📄 URL '{url}' 본문 추출 결과: {content[:200]}...") # 너무 길어서 일부만 로깅
-    #         return content
-
-    #     except requests.Timeout:
-    #         logger.error(f"❌ 뉴스 본문 크롤링 시간 초과: {url}")
-    #         return "본문 크롤링 시간 초과"
-    #     except Exception as e:
-    #         logger.error(f"❌ 뉴스 본문 크롤링 중 오류 ({url}): {str(e)}")
-    #         return f"본문 크롤링 오류: {str(e)}"
-            
-
-    # def analyze_esg_keywords(self, contents: list) -> dict:
-    #     """뉴스 본문 리스트에서 ESG 키워드 등장 빈도 분석"""
-    #     esg_keywords_path = "app/domain/service/esg_keywords.txt" # 경로 수정
-    #     try:
-    #         with open(esg_keywords_path, "r", encoding="utf-8") as file:
-    #             esg_keywords = [line.strip() for line in file.readlines() if line.strip()]
-    #         logger.info(f"🔑 ESG 키워드 {len(esg_keywords)}개 불러오기 성공: {esg_keywords_path}")
-    #     except FileNotFoundError:
-    #         logger.error(f"❌ ESG 키워드 파일({esg_keywords_path})을 찾을 수 없습니다.")
-    #         return {"error": f"ESG 키워드 파일({esg_keywords_path})을 찾을 수 없습니다."}
-
-
-    #     combined_text = " ".join(contents)
-    #     if not combined_text.strip():
-    #         logger.warning("⚠️ 분석할 텍스트 내용이 없습니다.")
-    #         return {}
-            
-    #     word_freq = Counter()
-
-    #     for word in esg_keywords:
-    #         count = combined_text.count(word)
-    #         if count > 0:
-    #             word_freq[word] = count
+        # 3. 불용어 처리
+        # 기본 불용어 세트 정의
+        default_stopwords_set = set([
+            '기자', '뉴스', '사진', '제공', '무단', '전재', '재배포', '금지', '닷컴', '씨엔에스', '데일리',
+            '것', '수', '이', '그', '저', '들', '등', '및', '제', '더', '위해', '통해', '오전', '오후',
+            '오늘', '내일', '지난', '올해', '최근', '현재', '때문', '따라', '대한', '대해', '통한', '바로',
+            '면서', '까지', '부터', '정도', '관련', '부분', '경우', '문제', '상황', '가운데', '한편',
+            '또한', '역시', '사실', '밝혔다', '전했다', '말했다', '했다', '있는', '있습니다', '있어',
+            '하는', '하고', '한', '합니다', '하는것이', '억원', '만원', '달러', '유로', '포인트', '퍼센트',
+            '월', '일', '년', '시', '분', '초' # 날짜/시간 관련 단어
+        ])
         
-    #     logger.info(f"📊 ESG 키워드 빈도 분석 완료: {dict(word_freq)}")
-    #     return dict(word_freq)
+        # 외부에서 전달된 custom_stopwords가 있다면 합침
+        final_stopwords = default_stopwords_set
+        if custom_stopwords:
+            final_stopwords.update(custom_stopwords)
 
-    # def generate_wordcloud_image(self, word_freq: dict) -> str:
-    #     """
-    #     단어 빈도수 데이터를 기반으로 워드클라우드 이미지를 생성하고
-    #     Base64로 인코딩된 문자열을 반환합니다.
-    #     """
-    #     if not word_freq:
-    #         logger.info("워드클라우드 생성을 위한 데이터가 없습니다.")
-    #         return "" # 빈 문자열 또는 에러 메시지/기본 이미지 Base64 반환 가능
+        # 단어 길이가 2 이상이고 불용어가 아닌 명사만 선택
+        meaningful_nouns = [
+            noun for noun in nouns if len(noun) > 1 and noun.lower() not in final_stopwords
+        ]
+        # logger.debug(f"불용어 처리 및 길이 필터링 후 명사 (처음 20개): {meaningful_nouns[:20]}")
 
-    #     try:
-    #         # WordCloud 객체 생성
-    #         # Mac에서 Brew로 fontconfig 설치 시 /opt/homebrew/etc/fonts/conf.d 경로에 폰트 설정이 있을 수 있음
-    #         # Dockerfile에 지정된 폰트 경로를 사용해야 합니다.
-    #         wc = WordCloud(
-    #             font_path=FONT_PATH,
-    #             width=800,
-    #             height=400,
-    #             background_color="white",
-    #             max_words=100 # 표시할 최대 단어 수
-    #         ).generate_from_frequencies(word_freq)
+        if not meaningful_nouns:
+            logger.warning("NLP 처리 후 분석할 의미있는 명사가 없습니다.")
+            return Counter()
+            
+        # 4. 단어 빈도수 계산
+        word_freq = Counter(meaningful_nouns)
+        logger.info(f"📊 단어 빈도 분석 완료. 고유 단어 수: {len(word_freq)}, 상위 5개: {word_freq.most_common(5)}")
+        
+        return word_freq
 
-    #         # 이미지 객체로 변환 후 바이트 스트림에 저장
-    #         img_byte_arr = io.BytesIO()
-    #         wc.to_image().save(img_byte_arr, format='PNG')
-    #         img_byte_arr = img_byte_arr.getvalue()
+    def generate_wordcloud_image_from_freq(self, word_freq: Counter, font_path: str = FONT_PATH) -> str:
+        """
+        단어 빈도수(Counter 객체)를 기반으로 워드클라우드 이미지를 생성하고
+        output 폴더에 news_cloud.png로 저장합니다. 저장된 파일 경로를 반환합니다.
+        """
+        if not isinstance(word_freq, Counter) or not word_freq:
+            logger.warning("워드클라우드 생성을 위한 유효한 단어 빈도 데이터(Counter)가 없습니다.")
+            return "" # 빈 경로 반환
 
-    #         # Base64로 인코딩
-    #         img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
-    #         logger.info("🖼️ 워드클라우드 이미지 생성 및 Base64 인코딩 성공")
-    #         return img_base64
-    #     except Exception as e:
-    #         # 폰트 경로 문제 발생 시 여기서 에러 로깅 가능
-    #         logger.error(f"❌ 워드클라우드 이미지 생성 실패: {str(e)}")
-    #         logger.error(f"ℹ️ 사용된 폰트 경로: {FONT_PATH}")
-    #         # 폰트 파일을 찾을 수 없는 경우 OSError: cannot open resource 발생 가능
-    #         if "cannot open resource" in str(e) or "No such file or directory" in str(e):
-    #              logger.error("🆘 폰트 파일을 찾을 수 없습니다. Dockerfile에 폰트가 올바르게 설치되었는지, FONT_PATH가 정확한지 확인하세요.")
-    #         return "" # 또는 에러 처리에 맞는 값 반환
+        # --- 디렉터리 생성 로직 추가 ---
+        output_dir = OUTPUT_DIR # 클래스 변수 사용
+        output_filename = "news_cloud.png"
+        output_path = os.path.join(output_dir, output_filename)
+
+        try:
+            # 디렉터리가 없으면 생성 (os.makedirs는 중간 경로도 함께 생성)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+                logger.info(f"출력 디렉터리 '{output_dir}'가 생성되었습니다.")
+        except OSError as e:
+            logger.error(f"❌ 출력 디렉터리 '{output_dir}' 생성 실패: {e}")
+            return "" # 디렉터리 생성 실패 시 빈 경로 반환
+        # --- 디렉터리 생성 로직 종료 ---
+
+        try:
+            wc = WordCloud(
+                font_path=font_path,
+                width=800,
+                height=400,
+                background_color="white",
+                max_words=100,
+            ).generate_from_frequencies(dict(word_freq))
+
+            wc.to_file(output_path) # 수정된 경로로 저장
+            logger.info(f"🖼️ 워드클라우드 이미지가 {output_path}에 저장되었습니다.")
+            return output_path # 저장된 파일의 전체 경로 반환
+
+        except Exception as e:
+            logger.error(f"❌ 워드클라우드 이미지 생성/저장 실패: {str(e)}")
+            if "cannot open resource" in str(e) or "No such file or directory" in str(e) or "not a TrueType font" in str(e):
+                 logger.error(f"🆘 폰트 파일을 찾을 수 없거나 유효하지 않습니다. 사용된 폰트 경로: {font_path}")
+            # 파일 저장 실패 시에도 어떤 경로를 시도했는지 알려주면 디버깅에 도움됨
+            logger.error(f"이미지 저장 시도 경로: {output_path}")
+            return "" # 실패 시 빈 경로 반환
