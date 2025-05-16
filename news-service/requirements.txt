@@ -21,3 +21,4 @@ wordcloud==1.9.4
 matplotlib~=3.8.4 # Python 3.12 호환 버전으로 업데이트
 numpy~=1.26.4    # Python 3.12 호환 버전으로 업데이트 (또는 ~=2.0.1)
 pandas~=2.2.2     # Python 3.12 호환 버전으로 업데이트
+selenium==4.15.0
