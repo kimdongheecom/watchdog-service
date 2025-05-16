@@ -101,10 +101,10 @@ class NewsService:
         for link in links:
             print(link)
         
-        link1 = links[0]
-        content = self.crawl_with_selenium(link1)
-        word_freq = self.process_text_for_nlp(content)
-        wordcloud_image = self.generate_wordcloud_image_from_freq(word_freq)
+        for i, link in enumerate(links[:5], start=1):
+            content = self.crawl_with_selenium(link)
+            word_freq = self.process_text_for_nlp(content)
+            self.generate_wordcloud_image_from_freq(word_freq, i)
 
         # print("🔗 추출된 컨텐츠 내용:",content)
 
@@ -266,10 +266,10 @@ class NewsService:
         
         return word_freq
 
-    def generate_wordcloud_image_from_freq(self, word_freq: Counter, font_path: str = FONT_PATH) -> str:
+    def generate_wordcloud_image_from_freq(self, word_freq: Counter, num: int = 1, font_path: str = FONT_PATH) -> str:
         """
         단어 빈도수(Counter 객체)를 기반으로 워드클라우드 이미지를 생성하고
-        output 폴더에 news_cloud.png로 저장합니다. 저장된 파일 경로를 반환합니다.
+        output 폴더에 news_cloud_{num}.png로 저장합니다. 저장된 파일 경로를 반환합니다.
         """
         if not isinstance(word_freq, Counter) or not word_freq:
             logger.warning("워드클라우드 생성을 위한 유효한 단어 빈도 데이터(Counter)가 없습니다.")
@@ -277,7 +277,7 @@ class NewsService:
 
         # --- 디렉터리 생성 로직 추가 ---
         output_dir = OUTPUT_DIR # 클래스 변수 사용
-        output_filename = "news_cloud.png"
+        output_filename = f"news_cloud_{num}.png"
         output_path = os.path.join(output_dir, output_filename)
 
         try:
