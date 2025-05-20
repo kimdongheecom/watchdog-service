@@ -2,6 +2,7 @@ from typing import Optional, Dict
 from fastapi import HTTPException
 import httpx
 import logging
+import traceback
 
 from app.domain.model.service_type import SERVICE_URLS, ServiceType
 
@@ -46,5 +47,7 @@ class ServiceProxyFactory:
                 return response
 
         except Exception as e:
-            logger.error(f"❌ 요청 실패: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Proxy 요청 실패: {str(e)}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"❌ 요청 실패:\n{error_traceback}") # <--- 수정
+            raise HTTPException(status_code=500, detail=f"Proxy 요청 실패: {str(e)}") 
+          

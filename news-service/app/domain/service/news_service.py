@@ -12,12 +12,31 @@ import base64 # 이미지를 base64로 인코딩하기 위해 임포트
 from konlpy.tag import Okt
 # 🔧 [Selenium 관련 추가 import]
 import time
+import datetime # 날짜/시간 처리를 위한 모듈 추가
+from zoneinfo import ZoneInfo # Python 3.9+ 표준 라이브러리 사용
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service as ChromeService
 import os
+import sys
 
-logger = logging.getLogger("news_service")
+# 로깅 포맷터 임포트 (새로운 유틸리티 파일에서)
+from app.core.logging_utils import KSTFormatter  # <--- 수정된 임포트
+
+# --- 로깅 설정 수정 (이전과 동일하게 유지) ---
+logger_service = logging.getLogger("news_service")
+logger_service.setLevel(logging.INFO)
+logger_service.propagate = False
+
+if not logger_service.handlers:
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    kst_formatter = KSTFormatter( # 임포트된 KSTFormatter 사용
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    console_handler.setFormatter(kst_formatter)
+    logger_service.addHandler(console_handler)
+# --- 로깅 설정 수정 끝 ---
 
 # 한글 폰트 경로 (Dockerfile에 설치된 경로에 맞게 조정 필요)
 # Dockerfile에서 fonts-nanum을 설치했다면 일반적으로 아래 경로 중 하나에서 찾을 수 있습니다.
@@ -30,9 +49,9 @@ class NewsService:
         # Okt 객체는 초기화에 시간이 걸릴 수 있으므로, 클래스 생성 시 한 번만 생성
         try:
             self.okt = Okt()
-            logger.info("✅ Okt 형태소 분석기 초기화 성공")
+            logger_service.info("✅ Okt 형태소 분석기 초기화 성공")
         except Exception as e:
-            logger.error(f"❌ Okt 형태소 분석기 초기화 실패: {e}. NLP 기능이 제한될 수 있습니다.")
+            logger_service.error(f"❌ Okt 형태소 분석기 초기화 실패: {e}. NLP 기능이 제한될 수 있습니다.")
             self.okt = None
         # pass # 기존 __init__ 내용 유지 (Okt 초기화 외에는 비워둠)
 
@@ -40,9 +59,9 @@ class NewsService:
         try:
             if not os.path.exists(OUTPUT_DIR):
                 os.makedirs(OUTPUT_DIR)
-                logger.info(f"✅ 출력 디렉터리 '{OUTPUT_DIR}'가 생성되었습니다.")
+                logger_service.info(f"✅ 출력 디렉터리 '{OUTPUT_DIR}'가 생성되었습니다.")
         except OSError as e:
-            logger.error(f"❌ 출력 디렉터리 '{OUTPUT_DIR}' 생성 실패: {e}")
+            logger_service.error(f"❌ 출력 디렉터리 '{OUTPUT_DIR}' 생성 실패: {e}")
 
     def get_news(self, company_name: str):
         base_url = "https://search.naver.com/search.naver"
@@ -58,10 +77,10 @@ class NewsService:
 
         try:
             response = requests.get(base_url, headers=headers, params=params)
-            logger.info(f"🎃✨🎉🎊 Response: {response.text}")
+            logger_service.info(f"🎃✨🎉🎊 Response: {response.text}")
             response.raise_for_status()  # HTTP 오류 발생 시 예외 발생
         except requests.RequestException as e:
-            logger.error(f"❌ 네이버 뉴스 요청 실패: {str(e)}")
+            logger_service.error(f"❌ 네이버 뉴스 요청 실패: {str(e)}")
             return {"error": f"네이버 뉴스 요청 실패: {str(e)}"}
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -69,7 +88,7 @@ class NewsService:
         
         # 제목 요소 찾기
         items = soup.select("span[class='sds-comps-text sds-comps-text-ellipsis-1 sds-comps-text-type-headline1']")
-        logger.info(f"🎃✨🎉Items: {len(items)}")
+        logger_service.info(f"🎃✨🎉Items: {len(items)}")
         
         # 부모 요소를 탐색하여 링크 추출
         news_list = []
@@ -84,16 +103,16 @@ class NewsService:
             link = None
             if parent_element and parent_element.name == 'a':
                 link = parent_element.get('href')
-                logger.info(f"🔗 링크 추출 성공: {link}")
+                logger_service.info(f"🔗 링크 추출 성공: {link}")
             else:
-                logger.warning(f"⚠️ 링크를 찾을 수 없음: {title}")
+                logger_service.warning(f"⚠️ 링크를 찾을 수 없음: {title}")
             
             news_list.append({
                 "title": title,
                 "link": link
             })
         
-        logger.info(f"🎃✨🎉🎊 News List: {news_list}")
+        logger_service.info(f"🎃✨🎉🎊 News List: {news_list}")
 
         # 링크만 추출해서 리스트로 정리
         links = [news['link'] for news in news_list if news.get('link')]
@@ -136,15 +155,15 @@ class NewsService:
         driver = None # finally 블록을 위해 driver를 None으로 초기화
         try:
             driver = webdriver.Chrome(service=service, options=options)
-            logger.info(f"🚀 Selenium WebDriver 시작됨. URL: {link}")
+            logger_service.info(f"🚀 Selenium WebDriver 시작됨. URL: {link}")
             driver.get(link)
-            logger.info(f"🎇🎆🎋🎁 Selenium WebDriver 시작됨. URL: {link}")
+            logger_service.info(f"🎇🎆🎋🎁 Selenium WebDriver 시작됨. URL: {link}")
             
             # JavaScript 로드 시간 부여, 필요에 따라 조정
             # time.sleep(3) # 복잡한 페이지에는 너무 짧을 수 있음
             # AJAX가 많은 사이트의 경우 WebDriverWait 필요할 수 있음
             driver.implicitly_wait(5) # 요소가 나타날 때까지 최대 5초 대기
-            logger.info(f"🧶🧥🥽 Selenium WebDriver 시작됨. URL: {link}")
+            logger_service.info(f"🧶🧥🥽 Selenium WebDriver 시작됨. URL: {link}")
 
             # 뉴스 콘텐츠에 대한 일반적인 선택자 시도
             selectors = [
@@ -159,7 +178,7 @@ class NewsService:
                 'article',                  # 일반 HTML5 article 태그
                 'main'                      # 일반 HTML5 main 태그
             ]
-            logger.info(f"🎃✨🎉🎊 선택자 시도 중: {selectors[0]}")
+            logger_service.info(f"🎃✨🎉🎊 선택자 시도 중: {selectors[0]}")
             content_text = ""
             for i, selector in enumerate(selectors):
                 try:
@@ -173,29 +192,29 @@ class NewsService:
                             elem_text = elem.text.strip()
                             if elem_text: # 비어있지 않은 텍스트 발견
                                 content_text = elem_text
-                                logger.info(f"✅ 내용 추출 성공 (선택자: '{selector}') (URL: {link})")
+                                logger_service.info(f"✅ 내용 추출 성공 (선택자: '{selector}') (URL: {link})")
                                 break # 내부 루프(elements) 탈출
                         if content_text:
                             break # 외부 루프(selectors) 탈출
                 except Exception as e_select:
-                    logger.warning(f"⚠️ 선택자 '{selector}' 사용 중 오류 또는 요소 없음 (URL {link}): {str(e_select)}")
+                    logger_service.warning(f"⚠️ 선택자 '{selector}' 사용 중 오류 또는 요소 없음 (URL {link}): {str(e_select)}")
             
             if not content_text:
-                logger.warning(f"⁉️ 위 선택자들로 내용을 찾지 못했습니다 (URL: {link}). 페이지 전체 텍스트를 시도합니다.")
+                logger_service.warning(f"⁉️ 위 선택자들로 내용을 찾지 못했습니다 (URL: {link}). 페이지 전체 텍스트를 시도합니다.")
                 # 대체: body에서 모든 텍스트 가져오기
                 try:
                     content_text = driver.find_element("css selector", "body").text.strip()
                     if not content_text:
                          content_text = "[본문 내용 없음 - 모든 선택자 실패 및 body 비어있음]"
                 except Exception as e_body:
-                    logger.error(f"❌ Body 텍스트 추출 실패 (URL {link}): {str(e_body)}")
+                    logger_service.error(f"❌ Body 텍스트 추출 실패 (URL {link}): {str(e_body)}")
                     content_text = "[본문 내용 없음 - Body 접근 불가]"
 
-            logger.info(f"🎃✨🎉🎊 최종 컨텐츠 텍스트: {content_text}")
+            logger_service.info(f"🎃✨🎉🎊 최종 컨텐츠 텍스트: {content_text}")
             return content_text
 
         except Exception as e:
-            logger.error(f"❌❌❌ Selenium 크롤링 중 심각한 오류 발생 ({link}): {str(e)}")
+            logger_service.error(f"❌❌❌ Selenium 크롤링 중 심각한 오류 발생 ({link}): {str(e)}")
             # page_source = driver.page_source if driver else "드라이버 초기화 안됨"
             # logger.debug(f"오류 발생 시점의 페이지 소스 (처음 1000자):\n{page_source[:1000]}")
             return f"[Selenium 크롤링 오류]: {str(e)}"
@@ -203,7 +222,7 @@ class NewsService:
         finally:
             if driver:
                 driver.quit()
-                logger.info(f"🧹 Selenium WebDriver 종료됨 (URL: {link})")
+                logger_service.info(f"🧹 Selenium WebDriver 종료됨 (URL: {link})")
      # --- 여기에 새로운 NLP 및 워드클라우드 함수 추가 ---
     
     def process_text_for_nlp(self, text: str, custom_stopwords: list = None) -> Counter:
@@ -213,11 +232,11 @@ class NewsService:
         custom_stopwords: 추가적인 불용어 리스트를 받을 수 있습니다.
         """
         if not self.okt:
-            logger.error("Okt 형태소 분석기가 초기화되지 않아 NLP 처리를 건너뜁니다.")
+            logger_service.error("Okt 형태소 분석기가 초기화되지 않아 NLP 처리를 건너뜁니다.")
             return Counter()
 
         if not text or text.startswith("["): # 오류 메시지나 빈 텍스트 처리
-            logger.warning(f"NLP 처리할 유효한 텍스트가 없습니다: '{text[:50]}...'")
+            logger_service.warning(f"NLP 처리할 유효한 텍스트가 없습니다: '{text[:50]}...'")
             return Counter()
 
         # 1. 텍스트 정제: 한글, 영문, 숫자, 공백을 제외한 특수문자 제거
@@ -227,10 +246,10 @@ class NewsService:
         # 2. 명사 추출
         try:
             nouns = self.okt.nouns(processed_text)
-            logger.info(f"🎃✨🎉🎊 추출된 명사 (처음 20개): {nouns[:20]}")
+            logger_service.info(f"🎃✨🎉🎊 추출된 명사 (처음 20개): {nouns[:20]}")
             # logger.debug(f"추출된 명사 (처음 20개): {nouns[:20]}")
         except Exception as e:
-            logger.error(f"Okt 명사 추출 중 오류 발생: {e}")
+            logger_service.error(f"Okt 명사 추출 중 오류 발생: {e}")
             return Counter()
 
         # 3. 불용어 처리
@@ -257,12 +276,12 @@ class NewsService:
         # logger.debug(f"불용어 처리 및 길이 필터링 후 명사 (처음 20개): {meaningful_nouns[:20]}")
 
         if not meaningful_nouns:
-            logger.warning("NLP 처리 후 분석할 의미있는 명사가 없습니다.")
+            logger_service.warning("NLP 처리 후 분석할 의미있는 명사가 없습니다.")
             return Counter()
             
         # 4. 단어 빈도수 계산
         word_freq = Counter(meaningful_nouns)
-        logger.info(f"📊 단어 빈도 분석 완료. 고유 단어 수: {len(word_freq)}, 상위 5개: {word_freq.most_common(5)}")
+        logger_service.info(f"📊 단어 빈도 분석 완료. 고유 단어 수: {len(word_freq)}, 상위 5개: {word_freq.most_common(5)}")
         
         return word_freq
 
@@ -272,21 +291,26 @@ class NewsService:
         output 폴더에 news_cloud_{num}.png로 저장합니다. 저장된 파일 경로를 반환합니다.
         """
         if not isinstance(word_freq, Counter) or not word_freq:
-            logger.warning("워드클라우드 생성을 위한 유효한 단어 빈도 데이터(Counter)가 없습니다.")
+            logger_service.warning("워드클라우드 생성을 위한 유효한 단어 빈도 데이터(Counter)가 없습니다.")
             return "" # 빈 경로 반환
 
         # --- 디렉터리 생성 로직 추가 ---
         output_dir = OUTPUT_DIR # 클래스 변수 사용
-        output_filename = f"news_cloud_{num}.png"
+        
+        # 현재 날짜와 시간을 파일명에 포함 (한국 시간 KST 사용)
+        # 한국 시간대(KST) 설정
+        kst = ZoneInfo('Asia/Seoul')
+        current_time = datetime.datetime.now(kst).strftime("%Y%m%d_%H%M%S")
+        output_filename = f"news_cloud_{num}_{current_time}.png"
         output_path = os.path.join(output_dir, output_filename)
 
         try:
             # 디렉터리가 없으면 생성 (os.makedirs는 중간 경로도 함께 생성)
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
-                logger.info(f"출력 디렉터리 '{output_dir}'가 생성되었습니다.")
+                logger_service.info(f"출력 디렉터리 '{output_dir}'가 생성되었습니다.")
         except OSError as e:
-            logger.error(f"❌ 출력 디렉터리 '{output_dir}' 생성 실패: {e}")
+            logger_service.error(f"❌ 출력 디렉터리 '{output_dir}' 생성 실패: {e}")
             return "" # 디렉터리 생성 실패 시 빈 경로 반환
         # --- 디렉터리 생성 로직 종료 ---
 
@@ -300,13 +324,13 @@ class NewsService:
             ).generate_from_frequencies(dict(word_freq))
 
             wc.to_file(output_path) # 수정된 경로로 저장
-            logger.info(f"🖼️ 워드클라우드 이미지가 {output_path}에 저장되었습니다.")
+            logger_service.info(f"🖼️ 워드클라우드 이미지가 {output_path}에 저장되었습니다.")
             return output_path # 저장된 파일의 전체 경로 반환
 
         except Exception as e:
-            logger.error(f"❌ 워드클라우드 이미지 생성/저장 실패: {str(e)}")
+            logger_service.error(f"❌ 워드클라우드 이미지 생성/저장 실패: {str(e)}")
             if "cannot open resource" in str(e) or "No such file or directory" in str(e) or "not a TrueType font" in str(e):
-                 logger.error(f"🆘 폰트 파일을 찾을 수 없거나 유효하지 않습니다. 사용된 폰트 경로: {font_path}")
+                 logger_service.error(f"🆘 폰트 파일을 찾을 수 없거나 유효하지 않습니다. 사용된 폰트 경로: {font_path}")
             # 파일 저장 실패 시에도 어떤 경로를 시도했는지 알려주면 디버깅에 도움됨
-            logger.error(f"이미지 저장 시도 경로: {output_path}")
+            logger_service.error(f"이미지 저장 시도 경로: {output_path}")
             return "" # 실패 시 빈 경로 반환
