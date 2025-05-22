@@ -1,4 +1,3 @@
-
 from typing import Optional, List, Dict
 import asyncpg
 from datetime import datetime
@@ -23,9 +22,9 @@ class LoginRepository:
         """데이터베이스 연결을 가져옵니다."""
         if not self.pool:
             # 환경 변수에서 DB 연결 정보 가져오기
-            db_host = os.getenv('DB_HOST', 'localhost')
+            db_host = os.getenv('DB_HOST', 'db.supabase.co')
             db_port = int(os.getenv('DB_PORT', '5432'))
-            db_name = os.getenv('DB_NAME', 'gateway')
+            db_name = os.getenv('DB_NAME', 'postgres')
             db_user = os.getenv('DB_USER', 'postgres')
             db_pass = os.getenv('DB_PASS', 'postgres')
             

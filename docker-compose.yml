@@ -1,18 +1,4 @@
 services:
-  postgres:
-    image: postgres:15
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=lifdb
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - lif-network
-    restart: always
-
   news-service:
     build: ./news-service
     ports:
@@ -24,13 +10,37 @@ services:
       - ./news-service/.env
     environment:
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/lifdb
-    restart: always
-    depends_on:
-      - postgres
     networks:
       - lif-network
 
+  sasb-service:
+    build: ./sasb-service
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./sasb-service/app:/app/app
+      - ./sasb-service/requirements.txt:/app/requirements.txt
+    env_file:
+      - ./sasb-service/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - lif-network
+
+  issuepool-service:
+    build: ./issuepool-service
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./issuepool-service/app:/app/app
+      - ./issuepool-service/requirements.txt:/app/requirements.txt
+    env_file:
+      - ./issuepool-service/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: always
+    networks:
+      - lif-network
   gateway:
     build: ./gateway
     ports:
@@ -44,12 +54,10 @@ services:
     restart: always
     depends_on:
       - news-service
+      - sasb-service
+      - issuepool-service
     networks:
       - lif-network
-
-volumes:
-  postgres_data:
-
 networks:
   lif-network:
     driver: bridge
